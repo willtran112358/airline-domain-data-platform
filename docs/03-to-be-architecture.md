@@ -2,50 +2,55 @@
 
 Target state aligned with **Data Engineer (Airline Domain)** responsibilities: scalable ETL/ELT, real-time ingestion, governance, AI/ML enablement.
 
+**Glossary:** [`00-source-system-glossary.md`](00-source-system-glossary.md)
+
 ---
 
 ## 1. Target landscape
 
 ```mermaid
 flowchart TB
+    classDef source fill:#e8eaf6,stroke:#3949ab,stroke-width:2px,color:#1a237e
+    classDef ingest fill:#fff8e1,stroke:#ff8f00,stroke-width:2px,color:#e65100
+    classDef bronze fill:#d7ccc8,stroke:#5d4037,stroke-width:2px,color:#3e2723
+    classDef silver fill:#b0bec5,stroke:#546e7a,stroke-width:2px,color:#263238
+    classDef gold fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
+    classDef gov fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef ops fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
+
     subgraph sources["Airline source systems"]
-        PSS["PSS / CRS"]
-        DCS["DCS events"]
-        PAY["Payment events"]
-        CRM["CRM / Loyalty"]
-        RMS["RMS feeds"]
-        OPS["Flight ops stream"]
+        PSS["Passenger Service System<br/>Computer Reservation System"]:::source
+        DCS["Departure Control System<br/>check-in events"]:::source
+        PAY["Payment Service Provider<br/>auth and capture"]:::source
+        CRM["Customer Relationship Management<br/>and Loyalty"]:::source
+        RMS["Revenue Management System"]:::source
+        OCC["Operations Control Center<br/>delay and recovery"]:::source
     end
 
     subgraph ingest["Ingestion layer"]
-        CDC["CDC / change files<br/>where PSS allows"]
-        JDBC["Spark JDBC / API<br/>incremental batch"]
-        MSK["Kafka / Event Hubs<br/>booking · check-in · payment"]
-        API["API Gateway micro-batch<br/>reference data"]
+        CDC["Change Data Capture<br/>where PSS allows"]:::ingest
+        JDBC["Spark JDBC incremental<br/>watermarked batch"]:::ingest
+        MSK["Kafka event bus<br/>booking check-in payment"]:::ingest
+        API["API Gateway micro-batch"]:::ingest
     end
 
     subgraph lake["Cloud lakehouse"]
-        S3B["Object store Bronze<br/>immutable raw"]
-        CAT["Glue / Unity Catalog"]
-        SPARK["Spark / Databricks ETL"]
-        S3S["Silver<br/>conformed passenger · flight"]
-        GOV["Lake Formation / Purview<br/>PII · lineage"]
-        DQ["DQ engine<br/>GX + SQL contracts"]
+        S3B["Bronze object store<br/>immutable raw"]:::bronze
+        SPARK["Spark or Databricks ETL"]:::silver
+        S3S["Silver conformed<br/>passenger and flight"]:::silver
+        DQ["Data quality engine<br/>Great Expectations plus SQL"]:::gov
+        GOV["Governance catalog<br/>PII tags and lineage"]:::gov
     end
 
-    subgraph wh["Warehouse gold"]
-        SF["Snowflake / Redshift / BigQuery"]
-        DM["dim_passenger SCD2"]
-        FF["fact_flight_segment"]
-        FB["fact_booking"]
-        FA["fact_ancillary"]
-        P360["passenger_360 mart"]
+    subgraph wh["Gold warehouse"]
+        SF["Snowflake Redshift BigQuery"]:::gold
+        P360["passenger_360 mart"]:::gold
     end
 
-    subgraph ops["DataOps"]
-        AF["Airflow / Step Functions"]
-        MON["Observability<br/>Datadog · CloudWatch"]
-        CI["CI/CD pipelines"]
+    subgraph dataops["DataOps"]
+        AF["Airflow or Step Functions"]:::ops
+        MON["Observability alerts"]:::ops
+        CI["CI CD pipelines"]:::ops
     end
 
     PSS --> CDC
@@ -54,27 +59,37 @@ flowchart TB
     PAY --> MSK
     CRM --> JDBC
     RMS --> JDBC
-    OPS --> MSK
+    OCC --> MSK
     CDC --> S3B
     JDBC --> S3B
     MSK --> S3B
     S3B --> SPARK --> S3S
     S3S --> DQ
-    DQ -->|pass| SF
-    SF --> DM
-    SF --> FF
-    SF --> FB
-    SF --> FA
+    DQ -->|"pass"| SF
     SF --> P360
     AF --> SPARK
     DQ --> MON
-    GOV --- S3B
-    GOV --- S3S
+    GOV -.-> S3B
+    GOV -.-> S3S
+    CI --> SPARK
 ```
 
 ---
 
 ## 2. Medallion tiering
+
+```mermaid
+flowchart LR
+    classDef bronze fill:#d7ccc8,stroke:#5d4037,stroke-width:2px,color:#3e2723
+    classDef silver fill:#b0bec5,stroke:#546e7a,stroke-width:2px,color:#263238
+    classDef gold fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
+
+    B["Bronze raw<br/>Passenger Service System DCS PSP"]:::bronze
+    S["Silver conformed<br/>passenger flight segment"]:::silver
+    G["Gold warehouse<br/>KPIs passenger_360"]:::gold
+
+    B -->|"Spark ETL"| S -->|"DQ pass"| G
+```
 
 | Tier | Path pattern | Content | Retention |
 |------|--------------|---------|-----------|
@@ -86,80 +101,28 @@ flowchart TB
 
 ---
 
-## 3. Passenger 360 (SSOT) model
+## 3. Passenger 360 (Single Source of Truth) model
 
 ```mermaid
-erDiagram
-    DIM_PASSENGER ||--o{ XREF_PASSENGER_ID : maps
-    DIM_PASSENGER ||--o{ FACT_PASSENGER_SNAPSHOT : monthly
-    DIM_PASSENGER ||--o{ FACT_BOOKING : books
-    FACT_BOOKING ||--|{ FACT_FLIGHT_SEGMENT : contains
-    DIM_FLIGHT ||--o{ FACT_FLIGHT_SEGMENT : operates
-    FACT_FLIGHT_SEGMENT ||--o{ FACT_ANCILLARY : upsell
-    FACT_BOOKING ||--o{ FACT_PAYMENT : pays
+flowchart TB
+    classDef dim fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef fact fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
+    classDef xref fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
 
-    DIM_PASSENGER {
-        bigint passenger_sk PK
-        string golden_passenger_id NK
-        date valid_from
-        date valid_to
-        boolean is_current
-        string loyalty_tier
-        int loyalty_points_balance
-        string preferred_language
-        boolean marketing_consent
-    }
+    DP["DIM_PASSENGER<br/>golden_passenger_id<br/>loyalty_tier SCD2"]:::dim
+    XR["XREF_PASSENGER_ID<br/>PSS loyalty CRM IDs"]:::xref
+    DF["DIM_FLIGHT<br/>schedule and actual times"]:::dim
+    FB["FACT_BOOKING<br/>pnr_locator channel"]:::fact
+    FS["FACT_FLIGHT_SEGMENT<br/>fare cabin status"]:::fact
+    FA["FACT_ANCILLARY<br/>bags seats fees"]:::fact
+    FP["FACT_PAYMENT<br/>Payment Service Provider"]:::fact
 
-    XREF_PASSENGER_ID {
-        string golden_passenger_id
-        string source_system
-        string source_passenger_id
-    }
-
-    DIM_FLIGHT {
-        string flight_id PK
-        string flight_number
-        date flight_date
-        string origin_airport
-        string destination_airport
-        timestamp scheduled_dep_utc
-        timestamp actual_dep_utc
-    }
-
-    FACT_BOOKING {
-        string booking_id PK
-        string pnr_locator
-        string golden_passenger_id FK
-        timestamp booking_ts_utc
-        string channel
-        string booking_status
-    }
-
-    FACT_FLIGHT_SEGMENT {
-        string segment_id PK
-        string booking_id FK
-        string flight_id FK
-        string cabin_class
-        string segment_status
-        decimal base_fare_amount
-        string currency_code
-    }
-
-    FACT_ANCILLARY {
-        string ancillary_id PK
-        string segment_id FK
-        string product_code
-        decimal revenue_amount
-        string fulfillment_status
-    }
-
-    FACT_PAYMENT {
-        string payment_id PK
-        string booking_id FK
-        string payment_method
-        decimal amount
-        string auth_status
-    }
+    DP -->|"maps"| XR
+    DP -->|"books"| FB
+    FB -->|"contains"| FS
+    DF -->|"operates"| FS
+    FS -->|"upsell"| FA
+    FB -->|"pays"| FP
 ```
 
 **Rule:** Preserve **declared** loyalty tier from source; use **estimated_*** only for ML features with `is_imputed` flag.
