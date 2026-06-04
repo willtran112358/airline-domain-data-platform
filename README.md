@@ -287,7 +287,3 @@ Full ERD: [`docs/05-database-schema.md`](docs/05-database-schema.md)
 | Airline domain | PSS, DCS, KrisFlyer, RMS, OCC |
 
 </details>
-
----
-
-*Singapore Airlines data platform reference · for client data-team review.*
