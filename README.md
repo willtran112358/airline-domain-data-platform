@@ -1,15 +1,11 @@
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/en/thumb/6/6b/Singapore_Airlines_Logo.svg/320px-Singapore_Airlines_Logo.svg.png" alt="Singapore Airlines" width="300"/>
+  <img src="docs/assets/sq-logo.svg" alt="Singapore Airlines — Enterprise Data Platform" width="420"/>
 </p>
 
 # Singapore Airlines — Enterprise Data Platform
 
-**Reference solution** for unifying commercial and operational analytics: **Passenger Service System** (Amadeus), **KrisFlyer** loyalty, **Departure Control System**, **Revenue Management System**, **Operations Control Center**, ancillary commerce, and **passenger 360** on a governed **lakehouse**.
-
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Singapore_Airlines_Boeing_777-300ER%289S-WSS%29.jpg/960px-Singapore_Airlines_Boeing_777-300ER%289S-WSS%29.jpg" alt="Singapore Airlines Boeing 777-300ER" width="720"/>
-  <br/>
-  <sub><em>Illustrative — Wikimedia Commons · 9V-SWS</em></sub>
+  <img src="docs/assets/sq-hero-banner.svg" alt="Singapore Airlines analytics platform" width="720"/>
 </p>
 
 | | |
