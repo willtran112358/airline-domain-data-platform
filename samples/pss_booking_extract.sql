@@ -1,5 +1,4 @@
--- Proposed: incremental PSS booking extract with watermark (Oracle / SQL Server style)
--- Run in 02:00-05:00 window; avoid PSS maintenance blackout
+-- SQ · incremental PSS (Amadeus) booking extract — UTC watermark window
 
 SELECT
   b.booking_id,
@@ -8,9 +7,11 @@ SELECT
   b.booking_ts_utc,
   b.sales_channel,
   b.booking_status,
+  b.marketing_carrier_code,  -- SQ
   b.last_modified_ts
-FROM pss.booking b
-WHERE b.last_modified_ts > :watermark_ts
+FROM pss_amadeus.booking b
+WHERE b.marketing_carrier_code = 'SQ'
+  AND b.last_modified_ts > :watermark_ts
   AND b.last_modified_ts < :upper_bound_ts
   AND b.booking_status NOT IN ('TEST', 'DUMMY')
 ORDER BY b.last_modified_ts;

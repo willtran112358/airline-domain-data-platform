@@ -1,29 +1,23 @@
-# As-is → to-be summary
+# As-is → target summary
 
-| Dimension | **As-is** | **To-be** |
-|-----------|-----------|-----------|
-| **Ingestion** | Nightly batch only | Batch + **Kafka** for Departure Control System and Payment Service Provider |
-| **Storage** | Department Operational Data Store silos | **Medallion** bronze / silver / gold |
-| **Passenger ID** | Passenger Service System vs loyalty vs CRM IDs | **`golden_passenger_id`** + cross-reference table |
-| **Grain** | Mixed leg/segment in one table | Documented **segment** and origin–destination facts |
-| **Ancillary** | Payment orphan rows | Join payment → Passenger Name Record → segment → flight |
-| **On-Time Performance** | Manual CSV | **Streaming** check-in + schedule conformed |
-| **DQ** | BI finds issues post-publish | **Block gold** on CRITICAL breach |
-| **Lineage** | Tribal knowledge | `pipeline_run_id`, catalog, OpenLineage |
-| **AI/ML** | Ad hoc production snapshots | Governed **feature** tables + consent |
-| **Governance** | Passenger Name Record copied widely | Catalog PII tags + role-based access |
-| **Cost** | Repeated full Passenger Service System extracts | Incremental + partition pruning |
-| **Tooling** | Talend / Informatica | **Spark**, **Airflow**, **dbt**, cloud warehouse |
+| Dimension | As-is | Target |
+|-----------|-------|--------|
+| Ingestion | Nightly batch | Batch PSS + **Kafka** DCS |
+| Storage | Dept ODS silos | **Medallion** lake |
+| Passenger ID | PNR ≠ KrisFlyer ≠ CRM | **`golden_passenger_id`** + xref |
+| Ancillary | Orphan PSP rows | PNR → segment → flight |
+| OTP | Manual OCC CSV | DCS stream + schedule conform |
+| DQ | Post-BI | **Block gold** on CRITICAL |
+| Lineage | Tribal | `pipeline_run_id`, catalog |
+| Tooling | Legacy ETL | Spark, Airflow, dbt |
 
 ---
 
-## Capability mapping (job description)
+## Capability outcomes
 
-| JD responsibility | To-be capability |
-|-------------------|------------------|
-| ETL/ELT pipelines | Spark bronze→silver; dbt silver→gold |
-| Real-time ingestion | Kafka landing → silver micro-batch |
-| Data lake / warehouse | Object store + Snowflake/Redshift/BigQuery gold |
-| Airline domain integration | Passenger Service System, Departure Control System, Payment Service Provider, loyalty, Revenue Management System, Operations Control Center |
-| AI/ML enablement | `passenger_360`, `feature_*` marts |
-| Governance & security | PII tags, lineage, RBAC |
+| Outcome | Target proof |
+|---------|--------------|
+| Unified commercial ops | Shared gold star schema |
+| KrisFlyer 360 | `passenger_360` mart |
+| Intraday ops | DCS Kafka landing |
+| Governed KPIs | `dq_contract.py` + SQL checks |

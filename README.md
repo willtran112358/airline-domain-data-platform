@@ -1,144 +1,143 @@
-# Airline Domain Data Platform
+<p align="center">
+  <img src="https://upload.wikimedia.org/wikipedia/en/thumb/6/6b/Singapore_Airlines_Logo.svg/320px-Singapore_Airlines_Logo.svg.png" alt="Singapore Airlines" width="300"/>
+</p>
 
-**Data solution portfolio** for **airline / aviation** data engineering: **Passenger Service System** integration (Navitaire, Amadeus, Sabre), loyalty, **Revenue Management System**, **Departure Control System**, **Operations Control Center**, ancillary commerce, and **passenger 360** on a modern **lakehouse** stack.
+# Singapore Airlines — Enterprise Data Platform
 
-| Meta | Value |
-|------|-------|
-| **Domain** | Airline commercial + operational analytics |
-| **Sources** | Passenger Service System, Departure Control System, Payment Service Provider, loyalty, Revenue Management System, Operations Control Center |
-| **Stack** | S3 lake, Spark/Glue, Kafka, Airflow, dbt, Snowflake/Redshift/BigQuery |
-| **JD alignment** | Data Engineer (Airline Domain) — ETL/ELT, streaming, governance, AI/ML |
+**Reference solution** for unifying commercial and operational analytics: **Passenger Service System** (Amadeus), **KrisFlyer** loyalty, **Departure Control System**, **Revenue Management System**, **Operations Control Center**, ancillary commerce, and **passenger 360** on a governed **lakehouse**.
 
-> **Disclaimer:** Anonymized **educational case study** for portfolio and interview use. No confidential airline data or production credentials.
+<p align="center">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Singapore_Airlines_Boeing_777-300ER%289S-WSS%29.jpg/960px-Singapore_Airlines_Boeing_777-300ER%289S-WSS%29.jpg" alt="Singapore Airlines Boeing 777-300ER" width="720"/>
+  <br/>
+  <sub><em>Illustrative — Wikimedia Commons · 9V-SWS</em></sub>
+</p>
 
-### Source system glossary (full English names)
+| | |
+|---|---|
+| **Carrier** | Singapore Airlines (IATA **SQ**) · hub **SIN** (Changi) |
+| **Loyalty** | KrisFlyer · PPS Club |
+| **Sources** | PSS, DCS, PSP, KrisFlyer, RMS, OCC |
+| **Stack** | S3 lake · Spark/Glue · Kafka · Airflow · dbt · Snowflake/BigQuery |
+| **Environments** | `dev` · `uat` · `prod` — see [`config/platform.yaml`](config/platform.yaml) |
+
+> **Notice:** Architecture and code samples are **illustrative** for data-team review. No production credentials, PNR data, or confidential airline content.
 
 | Acronym | Full name |
 |---------|-----------|
-| **PSS** | **Passenger Service System** |
-| **CRS** | **Computer Reservation System** |
-| **DCS** | **Departure Control System** |
-| **OCC** | **Operations Control Center** |
-| **RMS** | **Revenue Management System** |
-| **CRM** | **Customer Relationship Management** |
-| **PSP** | **Payment Service Provider** |
-| **PNR** | **Passenger Name Record** |
-| **OTP** | **On-Time Performance** |
+| **PSS** | Passenger Service System |
+| **DCS** | Departure Control System |
+| **OCC** | Operations Control Center |
+| **RMS** | Revenue Management System |
+| **KrisFlyer** | Frequent-flyer / loyalty program |
+| **PNR** | Passenger Name Record |
 
-Full definitions: [`docs/00-source-system-glossary.md`](docs/00-source-system-glossary.md)
+Glossary: [`docs/00-source-system-glossary.md`](docs/00-source-system-glossary.md)
 
 ---
 
-## Table of contents
+## Contents
 
-1. [Business — context & pain points](#1-business--context--pain-points)
-2. [Architecture — as-is vs proposed](#2-architecture--as-is-vs-proposed)
-3. [Sample engineering code](#3-sample-engineering-code)
-4. [Database schema diagram](#4-database-schema-diagram)
-5. [JD mapping & interview pitch](#5-jd-mapping--interview-pitch)
-6. [Repo map](#6-repo-map)
+1. [Business context](#1-business-context)
+2. [Architecture](#2-architecture)
+3. [Engineering artifacts](#3-engineering-artifacts)
+4. [Gold schema](#4-gold-schema)
+5. [Repository layout](#5-repository-layout)
 
 ---
 
-## 1. Business — context & pain points
+## 1. Business context
 
-### 1.1 Current state (typical airline)
+### 1.1 Current state (typical full-service carrier)
 
-| Dimension | As-is reality |
-|-----------|---------------|
-| **Commercial** | **Passenger Service System** (Amadeus / Sabre / Navitaire) = booking system of record |
-| **Operations** | **Departure Control System** check-in; **Operations Control Center** delays — often **not** in enterprise warehouse |
-| **Loyalty** | Separate database; tier updates lag Passenger Service System by 24–48h |
-| **Revenue** | **Revenue Management System** + finance settlement; ancillary in **Payment Service Provider** |
-| **Analytics** | Department marts; Excel; legacy ETL |
-| **Identity** | Passenger Name Record ID ≠ loyalty member ID ≠ CRM contact ID |
+| Dimension | As-is |
+|-----------|--------|
+| **Commercial** | PSS (Amadeus) = booking system of record |
+| **Loyalty** | KrisFlyer DB; tier lag vs PSS **24–48h** |
+| **Operations** | DCS check-in; OCC delays — often outside warehouse |
+| **Revenue** | RMS + settlement; ancillaries in PSP |
+| **Identity** | PNR ID ≠ KrisFlyer ID ≠ CRM contact ID |
 
 ### 1.2 Pain points
 
-| Pain | Business impact | Engineering symptom |
-|------|-----------------|---------------------|
-| **No passenger 360** | Personalization fails; duplicate outreach | 3+ ID systems; ad hoc merges |
-| **Batch-only T+1** | Revenue Management cannot see intraday cancellations | 18–36h pipeline; no streaming |
-| **Ancillary leakage** | Under-reported ancillary KPIs | Payment ↔ Passenger Name Record join breaks |
-| **On-Time Performance disagreements** | Ops vs regulatory report mismatch | Departure Control System not in warehouse |
-| **Yield / load factor errors** | Wrong network decisions | Mixed leg/segment/origin–destination grain |
-| **PII sprawl** | Audit / privacy risk | Passenger Name Record copied to many marts |
-| **DQ after publish** | Wrong dashboards in prod | BI finds nulls post-gold |
+| Pain | Impact | Symptom |
+|------|--------|---------|
+| No passenger 360 | Weak personalization | 3+ ID systems |
+| Batch T+1 | RMS blind to intraday cancels | 18–36h pipelines |
+| Ancillary leakage | Under-reported upsell KPIs | PSP ↔ PNR join breaks |
+| OTP mismatch | Ops vs regulatory disagreement | DCS not in warehouse |
+| DQ after publish | Wrong gold dashboards | BI finds nulls post-release |
 
 Detail: [`docs/01-business-context.md`](docs/01-business-context.md)
 
-### 1.3 Airline KPIs
+### 1.3 Network KPIs
 
-| KPI | Why data platform matters |
-|-----|---------------------------|
-| **Load Factor** | Consistent available seat kilometers / seats sold grain |
-| **Yield** | Revenue + revenue passenger kilometers; FX and ancillary |
-| **Ancillary Revenue** | Payment Service Provider + Electronic Miscellaneous Document + flown segment |
-| **On-Time Performance** | Scheduled vs actual; Departure Control System + Operations Control Center |
-| **Revenue Leakage** | Ticket coupon vs flown reconciliation |
+| KPI | Platform role |
+|-----|----------------|
+| **Load factor** | Consistent ASK / RPK grain |
+| **Yield** | Revenue + RPK; FX + ancillary |
+| **Ancillary revenue** | PSP + EMD + flown segment |
+| **OTP** | Schedule vs actual (DCS + OCC) |
 
 ---
 
-## 2. Architecture — as-is vs proposed
+## 2. Architecture
 
 ### 2.1 As-is (batch silos)
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily':'Segoe UI, sans-serif','primaryColor':'#0B1F3F','primaryTextColor':'#FFFFFF','primaryBorderColor':'#C9A227','lineColor':'#5B7DB1','secondaryColor':'#E8EDF5','tertiaryColor':'#FFF8E7'}}}%%
 flowchart TB
-    classDef source fill:#e8eaf6,stroke:#3949ab,stroke-width:2px,color:#1a237e
-    classDef ingest fill:#fff8e1,stroke:#ff8f00,stroke-width:2px,color:#e65100
-    classDef store fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f
-    classDef bi fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#006064
+    classDef source fill:#0B1F3F,stroke:#C9A227,stroke-width:2px,color:#FFFFFF
+    classDef ingest fill:#FFF8E7,stroke:#C9A227,stroke-width:2px,color:#0B1F3F
+    classDef store fill:#E8EDF5,stroke:#5B7DB1,stroke-width:2px,color:#0B1F3F
+    classDef bi fill:#C9A227,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
 
     subgraph src["Source systems"]
-        PSS["Passenger Service System"]:::source
-        DCS["Departure Control System"]:::source
-        PAY["Payment Service Provider"]:::source
-        CRM["CRM and Loyalty"]:::source
+        PSS["PSS · Amadeus<br/>bookings · tickets"]:::source
+        DCS["DCS<br/>check-in · bags"]:::source
+        KF["KrisFlyer · CRM"]:::source
+        PAY["PSP · ancillaries"]:::source
     end
     subgraph etl["Nightly ETL"]
-        T["Talend or Informatica"]:::ingest
+        T["Legacy ETL"]:::ingest
     end
     subgraph marts["Department marts"]
-        M1["Marketing"]:::store
+        M1["Commercial"]:::store
         M2["Revenue"]:::store
-        M3["Operations"]:::store
+        M3["Network ops"]:::store
     end
-    subgraph bi["BI"]
-        TAB["Tableau Power BI"]:::bi
+    subgraph bi["Consumption"]
+        TAB["Tableau · Power BI"]:::bi
     end
     PSS --> T
     DCS -.->|"often missing"| T
+    KF --> T
     PAY --> T
-    CRM --> T
-    T --> M1
-    T --> M2
-    T --> M3
-    M1 --> TAB
-    M2 --> TAB
-    M3 --> TAB
+    T --> M1 & M2 & M3
+    M1 & M2 & M3 --> TAB
 ```
 
-Full doc: [`docs/02-as-is-architecture.md`](docs/02-as-is-architecture.md)
+[`docs/02-as-is-architecture.md`](docs/02-as-is-architecture.md)
 
-### 2.2 Proposed (lakehouse + streaming)
+### 2.2 Target (lakehouse + streaming)
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily':'Segoe UI, sans-serif','primaryColor':'#0B1F3F','primaryTextColor':'#FFFFFF','primaryBorderColor':'#C9A227','lineColor':'#5B7DB1'}}}%%
 flowchart TB
-    classDef source fill:#e8eaf6,stroke:#3949ab,stroke-width:2px,color:#1a237e
-    classDef stream fill:#fff8e1,stroke:#ff8f00,stroke-width:2px,color:#e65100
-    classDef bronze fill:#d7ccc8,stroke:#5d4037,stroke-width:2px,color:#3e2723
-    classDef silver fill:#b0bec5,stroke:#546e7a,stroke-width:2px,color:#263238
-    classDef gold fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
-    classDef dq fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef source fill:#0B1F3F,stroke:#C9A227,stroke-width:2px,color:#FFFFFF
+    classDef stream fill:#FFF8E7,stroke:#C9A227,stroke-width:2px,color:#0B1F3F
+    classDef bronze fill:#8D6E63,stroke:#4E342E,stroke-width:2px,color:#FFFFFF
+    classDef silver fill:#78909C,stroke:#455A64,stroke-width:2px,color:#FFFFFF
+    classDef gold fill:#C9A227,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
+    classDef dq fill:#E8EDF5,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
 
-    PSS["Passenger Service System batch"]:::source
-    DCS["Departure Control System stream"]:::source
-    K["Kafka event bus"]:::stream
-    B["Bronze raw"]:::bronze
-    S["Silver conformed"]:::silver
-    DQ["Data quality gate"]:::dq
-    G["Gold star schema passenger_360"]:::gold
+    PSS["PSS batch<br/>Amadeus delta"]:::source
+    DCS["DCS stream<br/>SIN hub events"]:::source
+    K["MSK · Kafka"]:::stream
+    B["Bronze · sq-analytics-lake"]:::bronze
+    S["Silver · conformed"]:::silver
+    DQ["DQ gate · CRITICAL block"]:::dq
+    G["Gold · passenger_360 · KPIs"]:::gold
 
     PSS --> B
     DCS --> K --> B
@@ -149,85 +148,75 @@ flowchart TB
 |-----------|----------------|
 | **Medallion** | Bronze → Silver → Gold |
 | **Passenger SSOT** | `dim_passenger` SCD2 + `xref_passenger_id` |
-| **Hybrid ingest** | Batch Passenger Service System + **Kafka** Departure Control System |
+| **Hybrid ingest** | Batch PSS + Kafka DCS |
 | **DQ shift-left** | Block gold on CRITICAL breach |
 | **Lineage** | `pipeline_run_id` on every row |
 
-Full doc: [`docs/03-to-be-architecture.md`](docs/03-to-be-architecture.md)
+[`docs/03-to-be-architecture.md`](docs/03-to-be-architecture.md)
 
 ### 2.3 Medallion flow
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily':'Segoe UI, sans-serif'}}}%%
 flowchart LR
-    classDef bronze fill:#d7ccc8,stroke:#5d4037,stroke-width:2px,color:#3e2723
-    classDef silver fill:#b0bec5,stroke:#546e7a,stroke-width:2px,color:#263238
-    classDef gold fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
+    classDef bronze fill:#8D6E63,stroke:#4E342E,stroke-width:2px,color:#FFFFFF
+    classDef silver fill:#78909C,stroke:#455A64,stroke-width:2px,color:#FFFFFF
+    classDef gold fill:#C9A227,stroke:#0B1F3F,stroke-width:3px,color:#0B1F3F
 
-    B["Bronze immutable raw"]:::bronze
-    S["Silver conformed typed"]:::silver
-    G["Gold KPIs and marts"]:::gold
+    B["Bronze<br/>immutable raw"]:::bronze
+    S["Silver<br/>typed · deduped"]:::silver
+    G["Gold<br/>KPIs · marts"]:::gold
 
-    B -->|"Spark ETL"| S
+    B -->|"Spark / Glue"| S
     S -->|"DQ contract"| G
 ```
 
 ---
 
-## 3. Sample engineering code
+## 3. Engineering artifacts
 
-### 3.1 Pipeline flow (as-is vs proposed)
+### 3.1 Pipeline map
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily':'Segoe UI, sans-serif'}}}%%
 flowchart LR
-    classDef legacy fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c
-    classDef extract fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    classDef transform fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
-    classDef stream fill:#fff8e1,stroke:#ff8f00,stroke-width:2px,color:#e65100
-    classDef dq fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
-    classDef gold fill:#fff9c4,stroke:#f9a825,stroke-width:2px,color:#f57f17
+    classDef legacy fill:#FFEBEE,stroke:#B71C1C,stroke-width:2px,color:#B71C1C
+    classDef extract fill:#E3F2FD,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
+    classDef transform fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef stream fill:#FFF8E7,stroke:#C9A227,stroke-width:2px,color:#0B1F3F
+    classDef dq fill:#E8EDF5,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
+    classDef gold fill:#C9A227,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
 
-    subgraph asis["As-is on-prem"]
-        LEG["legacy_ods_plsql.sql<br/>NVL fare to zero"]:::legacy
+    subgraph asis["Legacy"]
+        LEG["legacy_ods_plsql.sql"]:::legacy
     end
-
-    subgraph proposed["Proposed cloud pipeline"]
-        EXT["pss_booking_extract.sql<br/>incremental watermark"]:::extract
-        BRZ["Bronze S3 partition"]:::extract
-        SPK["glue_booking_bronze_to_silver.py<br/>lineage plus quarantine"]:::transform
-        STR["kafka_dcs_checkin_landing.py<br/>Departure Control System events"]:::stream
-        AF["airflow_hybrid_etl_dag.py<br/>orchestration"]:::transform
-        DBT["dbt_fact_flight_segment.sql<br/>gold fact"]:::transform
-        DQC["dq_contract.py<br/>CRITICAL block"]:::dq
-        P360["gold_passenger_360.sql<br/>mart view"]:::gold
+    subgraph target["Target platform"]
+        EXT["pss_booking_extract.sql"]:::extract
+        BRZ["Bronze S3"]:::extract
+        SPK["glue_booking_bronze_to_silver.py"]:::transform
+        STR["kafka_dcs_checkin_landing.py"]:::stream
+        AF["airflow_hybrid_etl_dag.py"]:::transform
+        DBT["dbt_fact_flight_segment.sql"]:::transform
+        DQC["dq_contract.py"]:::dq
+        P360["gold_passenger_360.sql"]:::gold
     end
-
     LEG -.->|"replace"| EXT
     EXT --> BRZ --> SPK
     STR --> BRZ
-    AF --> SPK
-    SPK --> DQC --> DBT --> P360
+    AF --> SPK --> DQC --> DBT --> P360
 ```
 
-### 3.2 Artifact map
-
-| Layer | **As-is** | **Proposed** |
-|-------|-----------|--------------|
+| Layer | Legacy | Target |
+|-------|--------|--------|
 | Transform | [`legacy_ods_plsql.sql`](samples/legacy_ods_plsql.sql) | [`glue_booking_bronze_to_silver.py`](samples/glue_booking_bronze_to_silver.py) |
-| Extract | Ad hoc full export | [`pss_booking_extract.sql`](samples/pss_booking_extract.sql) |
-| Warehouse | Department Operational Data Store | [`dim_passenger_scd2.sql`](samples/dim_passenger_scd2.sql), [`dbt_fact_flight_segment.sql`](samples/dbt_fact_flight_segment.sql) |
+| Extract | Full export | [`pss_booking_extract.sql`](samples/pss_booking_extract.sql) |
+| Warehouse | Dept ODS | [`dim_passenger_scd2.sql`](samples/dim_passenger_scd2.sql), [`dbt_fact_flight_segment.sql`](samples/dbt_fact_flight_segment.sql) |
 | Orchestration | Cron | [`airflow_hybrid_etl_dag.py`](samples/airflow_hybrid_etl_dag.py) |
-| Streaming | None | [`kafka_dcs_checkin_landing.py`](samples/kafka_dcs_checkin_landing.py) |
+| Streaming | — | [`kafka_dcs_checkin_landing.py`](samples/kafka_dcs_checkin_landing.py) |
 | DQ | Post-BI | [`dq_contract.py`](samples/dq_contract.py), [`dq_load_factor_contract.sql`](samples/dq_load_factor_contract.sql) |
 | Mart | Siloed CRM | [`gold_passenger_360.sql`](samples/gold_passenger_360.sql) |
 
-### 3.3 Fare handling — as-is vs proposed
-
-| | Pattern |
-|---|---------|
-| **As-is** | `NVL(s.base_fare, 0)` — distorts yield when NULL |
-| **Proposed** | Preserve NULL; quarantine negative fares in Spark |
-
-### 3.4 Quick run (local)
+### 3.2 Local validation
 
 ```powershell
 cd samples
@@ -239,83 +228,70 @@ python kafka_dcs_checkin_landing.py
 
 ---
 
-## 4. Database schema diagram
-
-Logical **gold star schema** — each node lists **key columns** and links to related tables.
+## 4. Gold schema
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'fontFamily':'Segoe UI, sans-serif'}}}%%
 flowchart TB
-    classDef dim fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    classDef fact fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
-    classDef xref fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef dim fill:#0B1F3F,stroke:#C9A227,stroke-width:2px,color:#FFFFFF
+    classDef fact fill:#FFF8E7,stroke:#C9A227,stroke-width:2px,color:#0B1F3F
+    classDef xref fill:#E8EDF5,stroke:#5B7DB1,stroke-width:2px,color:#0B1F3F
 
-    DP["DIM_PASSENGER<br/>────────────<br/>passenger_sk PK<br/>golden_passenger_id<br/>loyalty_tier · valid_from to<br/>marketing_consent"]:::dim
-    XR["XREF_PASSENGER_ID<br/>────────────<br/>golden_passenger_id<br/>source_system PSS loyalty CRM<br/>source_passenger_id"]:::xref
-    DF["DIM_FLIGHT<br/>────────────<br/>flight_id PK<br/>flight_number · flight_date<br/>origin · destination airports<br/>scheduled_dep_utc · actual_dep_utc"]:::dim
+    DP["DIM_PASSENGER<br/>golden_passenger_id<br/>krisflyer_tier · consent"]:::dim
+    XR["XREF_PASSENGER_ID<br/>PSS · KrisFlyer · CRM"]:::xref
+    DF["DIM_FLIGHT<br/>SQ flight · SIN hub<br/>sched · actual UTC"]:::dim
+    FB["FACT_BOOKING<br/>pnr_locator · channel"]:::fact
+    FS["FACT_FLIGHT_SEGMENT<br/>cabin · fare · status"]:::fact
+    FA["FACT_ANCILLARY<br/>seat · bag · lounge"]:::fact
+    FP["FACT_PAYMENT<br/>PSP auth · capture"]:::fact
 
-    FB["FACT_BOOKING<br/>────────────<br/>booking_id PK<br/>pnr_locator Passenger Name Record<br/>golden_passenger_id FK<br/>booking_ts_utc · sales_channel<br/>booking_status"]:::fact
-    FS["FACT_FLIGHT_SEGMENT<br/>────────────<br/>segment_id PK<br/>booking_id FK · flight_id FK<br/>cabin_class · segment_status<br/>base_fare_amount · currency_code"]:::fact
-    FA["FACT_ANCILLARY<br/>────────────<br/>ancillary_id PK<br/>segment_id FK<br/>product_code · revenue_amount<br/>fulfillment_status"]:::fact
-    FP["FACT_PAYMENT<br/>────────────<br/>payment_id PK<br/>booking_id FK<br/>payment_method · amount<br/>auth_status · auth_ts_utc"]:::fact
-
-    DP -->|"1:N maps IDs"| XR
-    DP -->|"1:N books"| FB
-    FB -->|"1:N contains segments"| FS
-    DF -->|"1:N operates flight"| FS
-    FS -->|"1:N ancillary upsell"| FA
-    FB -->|"1:N payments"| FP
+    DP --> XR
+    DP --> FB
+    FB --> FS
+    DF --> FS
+    FS --> FA
+    FB --> FP
 ```
 
-### 4.1 Table quick reference
+| Table | Type | Sources |
+|-------|------|---------|
+| **DIM_PASSENGER** | Dimension | KrisFlyer, CRM |
+| **XREF_PASSENGER_ID** | Bridge | PSS, KrisFlyer, CRM |
+| **DIM_FLIGHT** | Dimension | PSS schedule, OCC actuals |
+| **FACT_BOOKING** | Fact | PSS |
+| **FACT_FLIGHT_SEGMENT** | Fact | PSS, DCS |
+| **FACT_ANCILLARY** | Fact | Catalog, PSP |
+| **FACT_PAYMENT** | Fact | PSP |
 
-| Table | Type | Links to | Source systems (full name) |
-|-------|------|----------|----------------------------|
-| **DIM_PASSENGER** | Dimension | `FACT_BOOKING`, `XREF_PASSENGER_ID` | Loyalty platform, Customer Relationship Management |
-| **XREF_PASSENGER_ID** | Bridge | `DIM_PASSENGER` | Passenger Service System, loyalty, CRM IDs |
-| **DIM_FLIGHT** | Dimension | `FACT_FLIGHT_SEGMENT` | Passenger Service System schedule, Operations Control Center actuals |
-| **FACT_BOOKING** | Fact | `FACT_FLIGHT_SEGMENT`, `FACT_PAYMENT` | **Passenger Service System** |
-| **FACT_FLIGHT_SEGMENT** | Fact | `FACT_ANCILLARY`, `DIM_FLIGHT` | **Passenger Service System**, **Departure Control System** status |
-| **FACT_ANCILLARY** | Fact | `FACT_FLIGHT_SEGMENT` | Ancillary catalog, **Payment Service Provider** |
-| **FACT_PAYMENT** | Fact | `FACT_BOOKING` | **Payment Service Provider** |
-
-Full ERD, all columns, partitioning: [`docs/05-database-schema.md`](docs/05-database-schema.md)
+Full ERD: [`docs/05-database-schema.md`](docs/05-database-schema.md)
 
 ---
 
-## 5. JD mapping & interview pitch
-
-| JD theme | Portfolio proof |
-|----------|-----------------|
-| ETL/ELT pipelines | Spark bronze→silver; dbt silver→gold |
-| Batch + real-time | Airflow + Kafka **Departure Control System** landing |
-| Data lake / warehouse | Medallion on S3 + cloud warehouse |
-| Airline systems | Passenger Service System, Departure Control System, Payment Service Provider, loyalty, Revenue Management System, Operations Control Center |
-| Data quality | `dq_contract.py`, load factor SQL checks |
-| Governance | PII tags, SCD2, `pipeline_run_id` lineage |
-| AI/ML enablement | `passenger_360`, feature-ready facts |
-
-**60-second pitch:**
-
-> *I've designed airline analytics platforms that land **Passenger Service System** and **Departure Control System** data on a medallion lakehouse, conform passenger identity for 360, shift data quality left before gold KPIs, and add Kafka for near real-time **Operations Control Center** inputs — so revenue, loyalty, and network teams share one governed truth.*
-
----
-
-## 6. Repo map
+## 5. Repository layout
 
 ```text
-airline-domain-data-platform/
 ├── README.md
-├── docs/
-│   ├── 00-source-system-glossary.md   # PSS, DCS, OCC full English names
-│   ├── 01-business-context.md
-│   ├── 02-as-is-architecture.md
-│   ├── 03-to-be-architecture.md
-│   ├── 04-as-is-to-be-summary.md
-│   └── 05-database-schema.md          # Full ERD + column tables
-├── samples/                           # As-is vs proposed code
+├── config/platform.yaml          # env · lake paths · schedules
+├── docs/                         # architecture & schema
+├── samples/                      # runnable pipeline references
+├── .github/workflows/ci.yml      # lint samples on push
 └── requirements.txt
 ```
 
 ---
 
-*Portfolio for Data Engineer (Airline Domain) roles — educational case study only.*
+<details>
+<summary><em>Internal — capability crosswalk (optional)</em></summary>
+
+| Theme | Proof in repo |
+|-------|----------------|
+| ETL/ELT | Spark bronze→silver; dbt gold |
+| Batch + stream | Airflow + Kafka DCS |
+| Governance | SCD2, PII tags, `pipeline_run_id` |
+| Airline domain | PSS, DCS, KrisFlyer, RMS, OCC |
+
+</details>
+
+---
+
+*Singapore Airlines data platform reference · for client data-team review.*

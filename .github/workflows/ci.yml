@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-samples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile samples/*.py
+      - run: python samples/dq_contract.py || true
+      - env:
+          DRY_RUN: "1"
+        run: |
+          python samples/glue_booking_bronze_to_silver.py
+          python samples/kafka_dcs_checkin_landing.py

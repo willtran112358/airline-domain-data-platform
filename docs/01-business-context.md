@@ -1,119 +1,63 @@
-# Business context — airline data platform modernization
+# Business context — Singapore Airlines data platform
 
-> **Disclaimer:** Composite narrative from typical airline / aviation data programs. Educational portfolio — not official airline documentation.
-
-**Source system names:** [`00-source-system-glossary.md`](00-source-system-glossary.md)
+> Illustrative discovery narrative for data-team review. Not official SIA documentation.
 
 ---
 
-## 1. Market & strategic drivers
+## Strategic drivers
 
-| Driver | Why it matters now |
-|--------|-------------------|
-| **Recovery & yield pressure** | Post-disruption networks need agile pricing and capacity |
-| **Ancillary revenue** | Bags, seats, meals — must be attributed to passenger and flight |
-| **Personalization** | Loyalty + Customer Relationship Management need **passenger 360** |
-| **Operational resilience** | On-Time Performance, disruption management — near real-time |
-| **AI / ML** | Demand forecasting, churn, dynamic offers — needs governed features |
-| **Regulatory & privacy** | Passenger Name Record, payment PCI, GDPR/CCPA — lineage and access control |
+| Driver | Relevance |
+|--------|-----------|
+| **Network yield** | Long-haul + hub-and-spoke at **SIN** needs consistent segment grain |
+| **KrisFlyer personalization** | Tier and miles must align with PSS bookings |
+| **Ancillary growth** | Seats, bags, lounge — tied to segment and PSP |
+| **OTP & disruption** | OCC + DCS near real-time for ops dashboards |
+| **AI / ML** | Demand, churn, offers — governed feature tables |
+| **Privacy** | PNR / payment PCI — lineage and RBAC |
 
 ---
 
-## 2. Stakeholder map
+## Stakeholders
 
 ```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#0B1F3F','primaryTextColor':'#fff','primaryBorderColor':'#C9A227'}}}%%
 flowchart LR
-    classDef biz fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
-    classDef tech fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
-    classDef ext fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef biz fill:#FFF8E7,stroke:#C9A227,stroke-width:2px,color:#0B1F3F
+    classDef tech fill:#E8EDF5,stroke:#0B1F3F,stroke-width:2px,color:#0B1F3F
 
-    CCO["Chief Revenue / Data Officer"]:::biz
-    REV["Revenue Management team"]:::biz
-    OPS["Network & Flight Operations"]:::biz
-    MKT["Marketing & Loyalty"]:::biz
-    IT["Airline IT / Data owner"]:::tech
-    PSS["Passenger Service System squad"]:::tech
+    REV["Revenue & network planning"]:::biz
+    KF["KrisFlyer & marketing"]:::biz
+    OPS["Flight operations · OCC"]:::biz
     DE["Data engineering"]:::tech
-    DS["Data Science / AI"]:::ext
+    PSS["PSS / Amadeus squad"]:::tech
 
-    CCO --> IT
-    REV --> DE
-    OPS --> DE
-    MKT --> DE
-    IT --> DE
-    PSS --> IT
-    DE --> DS
+    REV & KF & OPS --> DE
+    PSS --> DE
 ```
 
 ---
 
-## 3. As-is operating model
+## As-is pain (summary)
 
-| Function | Typical behavior | Pain |
-|----------|------------------|------|
-| **Revenue Management** | Revenue Management System exports + Excel; stale booking snapshots | Cannot react intraday to cancellations |
-| **Loyalty** | Separate warehouse from Passenger Service System | Tier status lags 24–48h |
-| **Operations** | Aircraft Communications Addressing and Reporting System siloed from commercial | On-Time Performance dashboards disagree with finance |
-| **Marketing** | Campaign lists from Customer Relationship Management export | Duplicate passengers (Passenger Name Record vs loyalty ID) |
-| **Finance** | General ledger + settlement files T+1 | Ancillary leakage vs flown revenue |
-| **Audit** | Sample Passenger Name Record rows in Excel | No lineage from source to KPI |
+- **Identity:** PNR ≠ KrisFlyer ID ≠ CRM contact
+- **Latency:** Booking T+1; DCS events outside warehouse
+- **Ancillary:** PSP payments orphaned from flown segments
+- **OTP:** Manual OCC CSV vs warehouse metrics
+- **DQ:** Issues found in BI after gold publish
 
 ---
 
-## 4. Pain point deep dive
+## KPI definitions
 
-### 4.1 Passenger / customer fragmentation
-
-- Passenger Service System **passenger_id** ≠ loyalty **member_id** ≠ Customer Relationship Management **contact_id**
-- Same person books via online travel agency, airline.com, and call center — weak crosswalk
-- **Email / phone** shared in family bookings → false duplicate merges
-
-### 4.2 High-volume transactional lag
-
-```text
-Booking (Passenger Service System) → nightly ETL → warehouse → Revenue Management (T+1)
-Departure Control System check-in events → not in warehouse → Operations Control Center dashboard manual
-```
-
-- Peak: **hundreds of thousands** of booking transactions/day on hub carriers
-- Cancellations and schedule changes need **sub-hour** visibility for operations
-
-### 4.3 Revenue leakage & ancillary blind spots
-
-- Seat/bag fees in Payment Service Provider not joined to **flown segment**
-- **Yield** and **load factor** computed on different grains (leg vs segment vs origin–destination)
-- **Revenue leakage**: flown passengers without matching ticket document
-
-### 4.4 Data quality discovered late
-
-```text
-Passenger Service System export → ETL (status code drift) → mart → BI tool
-                                      ↑
-                            No gate at silver; BI finds On-Time Performance drop weeks later
-```
-
-### 4.5 Governance & compliance
-
-- Passenger Name Record **PII** copied to multiple marts without classification
-- No standard **audit columns** (`ingest_ts`, `pipeline_run_id`, `source_system`)
-- AI teams train on **production snapshots** without anonymization workflow
+| KPI | Grain | Risk if wrong |
+|-----|-------|---------------|
+| Load factor | Flight + cabin + date | Codeshare double-count |
+| Yield | OD + cabin + month | FX / ancillary timing |
+| Ancillary | Segment | PSP join failure |
+| OTP | Flight instance | Schedule vs actual mismatch |
 
 ---
 
-## 5. Airline KPIs (business language)
+## Executive summary
 
-| KPI | Definition (simplified) | Data pain if broken |
-|-----|-------------------------|---------------------|
-| **Load Factor** | RPK / ASK (or seats sold / seats available) | Double-count codeshare; wrong cabin grain |
-| **Yield** | Revenue / RPK | FX timing; ancillary not in numerator |
-| **Ancillary Revenue** | Non-ticket revenue per passenger / flight | Payment ↔ Passenger Name Record join failures |
-| **On-Time Performance** | % arrivals within threshold | Operations clock vs published schedule mismatch |
-| **Revenue Leakage** | Flown vs billed mismatch | Missing ticket–coupon linkage |
-
----
-
-## 6. Executive one-liner
-
-> *We cannot run revenue management, loyalty personalization, and operational control on disconnected batch silos — we need a governed lakehouse, passenger 360, and quality gates before gold KPIs reach the business.*
-
-JD alignment: [`../README.md`](../README.md) §5
+> Unify PSS, KrisFlyer, DCS, and PSP on a medallion lakehouse with passenger 360 and DQ gates before gold KPIs reach commercial and network teams.

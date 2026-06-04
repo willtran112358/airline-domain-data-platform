@@ -1,0 +1,32 @@
+# Singapore Airlines analytics platform — environment config (reference)
+platform:
+  carrier_code: SQ
+  hub_airport: SIN
+  loyalty_program: KRISFLYER
+
+environments:
+  dev:
+    lake_bucket: sq-analytics-lake-dev
+    warehouse: snowflake://sq_analytics_dev
+  uat:
+    lake_bucket: sq-analytics-lake-uat
+    warehouse: snowflake://sq_analytics_uat
+  prod:
+    lake_bucket: sq-analytics-lake-prod
+    warehouse: snowflake://sq_analytics_prod
+
+paths:
+  bronze: "s3://{bucket}/bronze/{system}/{entity}/dt={date}/"
+  silver: "s3://{bucket}/silver/{domain}/{entity}/"
+  gold_schema: gold
+
+schedules:
+  pss_booking_batch: "0 3 * * *"   # UTC — post-PSS maintenance window
+  dcs_stream: continuous
+  dq_gate_before_gold: after_silver
+
+kafka:
+  bootstrap: "${KAFKA_BOOTSTRAP}"
+  topics:
+    dcs_checkin: sq.dcs.checkin.v1
+    payment_auth: sq.psp.payment.v1
