@@ -5,7 +5,7 @@
 # Singapore Airlines — Enterprise Data Platform
 
 <p align="center">
-  <img src="docs/assets/sq-hero-banner.svg" alt="Singapore Airlines analytics platform" width="720"/>
+  <img src="docs/assets/sq-hero-banner.png" alt="Singapore Airlines analytics platform" width="720"/>
 </p>
 
 | | |
